@@ -38,13 +38,14 @@ class Scopus(Query):
         self._api_key = os.environ["ELSEVIER_API_KEY"]
 
         # Base api query url
-        self._base_url = "https://api.elsevier.com/content/search/scopus?"
+        self._base_url = "https://api.elsevier.com/content/search/scopus"
 
     def stubborn_url_open(self, url):
         request = urllib.request.Request(url)
         request.add_header("User-Agent", "SurveyRuntime/1.0.0")
         request.add_header("Connection", "keep-alive")
         request.add_header("Accept", "application/json")
+        request.add_header("X-ELS-APIKey", self._api_key)
         for _ in range(10):
             try:
                 response = urllib.request.urlopen(request, timeout=300)
@@ -63,10 +64,7 @@ class Scopus(Query):
 
     @RateLimiter(max_calls=2, period=1)
     def get_publisher_by_eid(self, eid: str):
-        url = (
-            f"https://api.elsevier.com/content/abstract/eid/{eid}"
-            f"?apiKey={self._api_key}"
-        )
+        url = f"https://api.elsevier.com/content/abstract/eid/{eid}"
 
         response = self.stubborn_url_open(url=url)
         json_response = json.loads(response.read())
@@ -109,10 +107,7 @@ class Scopus(Query):
 
     @RateLimiter(max_calls=2, period=1)
     def get_impact_by_issn(self, issn: str):
-        url = (
-            f"https://api.elsevier.com/content/serial/title/issn/{issn}"
-            f"?apiKey={self._api_key}"
-        )
+        url = f"https://api.elsevier.com/content/serial/title/issn/{issn}"
 
         response = self.stubborn_url_open(url=url)
         json_response = json.loads(response.read())
@@ -176,15 +171,18 @@ class Scopus(Query):
     def fetch_all(self):
         p = self._persistence()
 
-        query = (
-            f"query={self._search_query}"
-            f"&cursor=*"
-            f"&date={self._date_range}"
-            f"&view=COMPLETE"
-            f"&apiKey={self._api_key}"
-        )
+        start_year, end_year = self._date_range.split("-")
+        params = {
+            "query": self._search_query
+            + " AND PUBYEAR > "
+            + start_year
+            + " AND PUBYEAR < "
+            + end_year,
+        }
 
-        next_link = self._base_url + query
+        # Encode the parameters
+        query_string = urllib.parse.urlencode(params)
+        next_link = f"{self._base_url}?{query_string}"
 
         entries = True
         while entries and next_link:
@@ -199,7 +197,6 @@ class Scopus(Query):
             f"&start=0"
             f"&count=5"
             f"&date={self._date_range}"
-            f"&apiKey={self._api_key}"
         )
         url = self._base_url + query
 
